@@ -1,0 +1,98 @@
+{
+  "tenant_id": {
+    "description": "Azure AD Tenant ID",
+    "type": "string",
+    "hint": "Your Microsoft 365 tenant ID (also called Directory ID). Find it in Entra admin centre → Overview, or Azure Portal → Azure Active Directory → Properties. Looks like: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "default": ""
+  },
+  "client_id": {
+    "description": "App Registration Client ID",
+    "type": "string",
+    "hint": "The Application (client) ID of your Azure App Registration. Create one at portal.azure.com → Entra ID → App registrations → New registration. Grant it the API permissions listed in the README, then create a client secret.",
+    "default": ""
+  },
+  "client_secret": {
+    "description": "App Registration Client Secret",
+    "type": "string",
+    "hint": "A client secret from your App Registration (Certificates & secrets → New client secret). Copy the Value immediately — it's only shown once. Store it here; it authenticates the plugin to the Microsoft Graph API.",
+    "default": ""
+  },
+  "user_email": {
+    "description": "Microsoft 365 user email (UPN)",
+    "type": "string",
+    "hint": "The email address of the user whose mailbox and Teams activity this plugin will act on — e.g. hamun@melbits.com.au. The app must have been granted permissions (with admin consent) to act on that user's behalf.",
+    "default": ""
+  },
+  "enable_teams_read": {
+    "description": "Enable: read Teams channel messages",
+    "type": "bool",
+    "hint": "When ON, /m365-teams-read and the read_teams_messages LLM tool are active. Requires ChannelMessage.Read.All and Team.ReadBasic.All app permissions with admin consent.",
+    "default": true
+  },
+  "enable_teams_send": {
+    "description": "Enable: send Teams channel messages",
+    "type": "bool",
+    "hint": "When ON, /m365-teams-send and the send_teams_message LLM tool are active. Requires ChannelMessage.Send app permission with admin consent.",
+    "default": true
+  },
+  "enable_email_read": {
+    "description": "Enable: read inbox emails",
+    "type": "bool",
+    "hint": "When ON, /m365-email-read and the read_emails LLM tool fetch emails from the inbox of user_email. Requires Mail.Read (or Mail.ReadWrite) app permission with admin consent.",
+    "default": true
+  },
+  "enable_email_draft": {
+    "description": "Enable: save email drafts",
+    "type": "bool",
+    "hint": "When ON, /m365-email-draft saves a message to the user's Drafts folder without sending it. Requires Mail.ReadWrite app permission with admin consent.",
+    "default": true
+  },
+  "enable_email_send": {
+    "description": "Enable: send emails",
+    "type": "bool",
+    "hint": "When ON, /m365-email-send and /m365-email-reply actually transmit email. Disabled by default — turn on only after verifying config. Requires Mail.Send app permission with admin consent.",
+    "default": false
+  },
+  "enable_background_poll": {
+    "description": "Enable: background polling for new messages/emails",
+    "type": "bool",
+    "hint": "When ON, the plugin periodically checks for new emails and Teams messages and notifies the active AstrBot session. Uses poll_interval_seconds. Turn OFF to reduce API calls and avoid noise.",
+    "default": false
+  },
+  "poll_interval_seconds": {
+    "description": "Background poll interval (seconds)",
+    "type": "int",
+    "hint": "How often to check for new emails and Teams messages when background polling is enabled. Microsoft Graph API rate limits apply — 60 seconds minimum recommended.",
+    "default": 120
+  },
+  "email_max_results": {
+    "description": "Max emails to return per read",
+    "type": "int",
+    "hint": "Limits how many emails are shown by /m365-email-read and the read_emails LLM tool. Keep low (5–20) to avoid flooding the chat.",
+    "default": 10
+  },
+  "teams_max_results": {
+    "description": "Max Teams messages to return per read",
+    "type": "int",
+    "hint": "Limits messages shown by /m365-teams-read and the read_teams_messages LLM tool.",
+    "default": 10
+  },
+  "watch_team_name": {
+    "description": "Default Teams team name to monitor",
+    "type": "string",
+    "hint": "The display name of the Microsoft Team to use when no team is specified in a command — e.g. 'Melbit Internal'. Leave blank to require an explicit team name each time.",
+    "default": ""
+  },
+  "watch_channel_name": {
+    "description": "Default Teams channel name to monitor",
+    "type": "string",
+    "hint": "The channel to use when no channel is specified — e.g. 'General'. Leave blank to require an explicit channel name each time.",
+    "default": "General"
+  },
+  "email_inbox_folder": {
+    "description": "Email folder to read from",
+    "type": "string",
+    "hint": "The mailbox folder for /m365-email-read. Use 'inbox' for the inbox, or any well-known folder name (drafts, sentitems, deleteditems) or a custom folder display name.",
+    "default": "inbox"
+  }
+}

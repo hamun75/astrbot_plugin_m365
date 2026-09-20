@@ -1,0 +1,5 @@
+name: astrbot_plugin_m365
+desc: Connects AstrBot to Microsoft 365 — read and send Teams channel messages, read inbox emails, draft replies, and send email. All features toggled individually in config.
+version: 1.0.0
+author: Melbit Services
+repo: https://github.com/melbit-services/astrbot_plugin_m365
