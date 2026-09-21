@@ -35,6 +35,18 @@
     "hint": "When ON, /m365-teams-read and the read_teams_messages LLM tool are active. Requires ChannelMessage.Read.All and Team.ReadBasic.All app permissions with admin consent.",
     "default": true
   },
+  "enable_teams_send": {
+    "description": "Enable: send Teams channel messages",
+    "type": "bool",
+    "hint": "When ON, /m365-teams-send posts a message via the Power Automate Workflow URL configured in teams_workflow_url.",
+    "default": true
+  },
+  "teams_workflow_url": {
+    "description": "Power Automate Workflow URL (Teams channel post)",
+    "type": "string",
+    "hint": "The HTTP trigger URL from your Logic App / Power Automate Workflow that posts to a Teams channel. In Azure Portal: Logic Apps → your app → Overview → copy the Workflow URL. The workflow should accept {\"text\": \"...\"} and post it to the Teams channel.",
+    "default": "https://prod-29.australiaeast.logic.azure.com:443/workflows/ad61e36c924048f78a5d1a5d8847d74e/triggers/When_an_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_an_HTTP_request_is_received%2Frun&sv=1.0&sig=Hk2t6_1XtwDRXBj80Ss6jabbkVqnIGXQ9BK7uzT75rE"
+  },
   "enable_email_read": {
     "description": "Enable: read inbox emails",
     "type": "bool",
