@@ -5,22 +5,27 @@ Connects AstrBot to Microsoft 365 via the Microsoft Graph API, using an
 Azure App Registration with client-credentials (app-only) authentication.
 
 Capabilities (each toggled independently in config):
-  - Teams: read channel messages, send channel messages
+  - Teams: read channel messages
   - Email: read inbox, save drafts, reply to emails, send email
 
 Slash commands:
   /m365-teams-list               — list accessible teams and channels
   /m365-teams-read [team] [ch]   — read last N messages from a channel
-  /m365-teams-send <ch> <msg>    — post a message to a channel
   /m365-email-read [n]           — read last N emails from inbox
   /m365-email-reply <id> <text>  — reply to an email by its short ID
   /m365-email-draft <to> <subj> | <body>  — save a draft
   /m365-email-send  <to> <subj> | <body>  — send an email
 
+Note: Teams channel posting via Graph API requires Resource-Specific Consent (RSC)
+which is not available as a standard app permission. Microsoft recommends using
+Power Automate Workflows (HTTP trigger → Post message to channel) as the
+replacement for the deprecated Incoming Webhook connector.
+See README.md for setup instructions once a Workflow URL is available.
+
 Setup — see README.md for the full Azure App Registration walkthrough.
 Required Microsoft Graph application permissions (admin consent needed):
   Team.ReadBasic.All, Channel.ReadBasic.All,
-  ChannelMessage.Read.All, ChannelMessage.Send,
+  ChannelMessage.Read.All,
   Mail.ReadWrite, Mail.Send
 """
 
@@ -165,7 +170,6 @@ class M365Plugin(Star):
 
         # ---- feature flags ------------------------------------------------
         self.teams_read  = bool(self.cfg.get("enable_teams_read",  True))
-        self.teams_send  = bool(self.cfg.get("enable_teams_send",  True))
         self.email_read  = bool(self.cfg.get("enable_email_read",  True))
         self.email_draft = bool(self.cfg.get("enable_email_draft", True))
         self.email_send  = bool(self.cfg.get("enable_email_send",  False))
@@ -175,11 +179,10 @@ class M365Plugin(Star):
         self.email_max   = int(self.cfg.get("email_max_results",  10) or 10)
         self.teams_max   = int(self.cfg.get("teams_max_results",  10) or 10)
         self.poll_secs   = int(self.cfg.get("poll_interval_seconds", 120) or 120)
-        self.user_email        = str(self.cfg.get("user_email", "") or "").strip()
-        self.dflt_team         = str(self.cfg.get("watch_team_name",   "") or "").strip()
-        self.dflt_chan          = str(self.cfg.get("watch_channel_name", "General") or "General").strip()
-        self.inbox_folder      = str(self.cfg.get("email_inbox_folder", "inbox") or "inbox").strip()
-        self.teams_webhook_url = str(self.cfg.get("teams_webhook_url", "") or "").strip()
+        self.user_email   = str(self.cfg.get("user_email", "") or "").strip()
+        self.dflt_team    = str(self.cfg.get("watch_team_name",    "") or "").strip()
+        self.dflt_chan     = str(self.cfg.get("watch_channel_name", "General") or "General").strip()
+        self.inbox_folder = str(self.cfg.get("email_inbox_folder", "inbox") or "inbox").strip()
 
         # ---- auth ---------------------------------------------------------
         tenant    = str(self.cfg.get("tenant_id",        "") or "").strip()
@@ -286,21 +289,6 @@ class M365Plugin(Star):
             mid    = _short_id(m.get("id", ""))
             lines.append(f"[{ts}] **{sender}** (id: {mid})\n{body}\n")
         return "\n".join(lines)
-
-    async def _send_teams_message(self, text: str) -> str:
-        """Post a message via the configured incoming webhook URL."""
-        if not self.teams_webhook_url:
-            return "⚠️ teams_webhook_url is not configured. Add an Incoming Webhook connector to your Teams channel and paste the URL in plugin config."
-        await self._graph._ensure_session()
-        async with self._graph._session.post(
-            self.teams_webhook_url,
-            json={"text": text},
-            headers={"Content-Type": "application/json"},
-        ) as resp:
-            if not resp.ok:
-                body = await resp.text()
-                raise RuntimeError(f"Webhook POST failed {resp.status}: {body}")
-        return "✅ Message sent to Teams."
 
     async def _list_teams_text(self) -> str:
         teams = await self._load_teams()
@@ -429,7 +417,7 @@ class M365Plugin(Star):
 
     def _check(self, flag: bool, feature: str) -> Optional[str]:
         if not self._ready:
-            return "⚠️ M365 plugin not ready — check tenant_id, client_id, client_secret in config."
+            return "⚠️ M365 plugin not ready — check tenant_id, client_id, cert_thumbprint, cert_private_key in config."
         if not flag:
             return f"⚠️ '{feature}' is disabled in plugin config."
         return None
@@ -490,28 +478,6 @@ class M365Plugin(Star):
 
         async for r in self._safe_run(event, self.teams_read, "teams_read",
                                        self._read_teams_messages(team, chan, count)):
-            yield r
-
-    @filter.command("m365-teams-send")
-    async def cmd_teams_send(self, event: AstrMessageEvent):
-        """
-        /m365-teams-send <message>
-        Post a message to the Teams channel configured via incoming webhook.
-        Example: /m365-teams-send Deployment complete ✅
-        """
-        self._update_poll_ctx(event)
-        err = self._check(self.teams_send, "teams_send")
-        if err:
-            yield event.plain_result(err)
-            return
-
-        raw = (event.message_str or "").split(maxsplit=1)
-        if len(raw) < 2:
-            yield event.plain_result("Usage: /m365-teams-send <message>")
-            return
-
-        async for r in self._safe_run(event, self.teams_send, "teams_send",
-                                       self._send_teams_message(raw[1])):
             yield r
 
     @filter.command("m365-email-read")

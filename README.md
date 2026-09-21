@@ -7,11 +7,17 @@ Features are toggled individually — turn on only what you need:
 | Feature | Config toggle | Default |
 |---------|--------------|---------|
 | Read Teams channel messages | `enable_teams_read` | ✅ ON |
-| Send Teams channel messages | `enable_teams_send` | ✅ ON |
 | Read inbox emails | `enable_email_read` | ✅ ON |
 | Save email drafts | `enable_email_draft` | ✅ ON |
 | Send / reply to emails | `enable_email_send` | ❌ OFF |
 | Background new-email notifications | `enable_background_poll` | ❌ OFF |
+
+> **Teams send:** Microsoft deprecated the Incoming Webhook connector and the
+> `ChannelMessage.Send` Graph permission requires Resource-Specific Consent (RSC)
+> which is not available as a standard app-only permission. The recommended
+> replacement is **Power Automate Workflows** (HTTP trigger → "Post message to a
+> channel"). Once you have a Workflow URL, it can be wired up as a config field
+> — see the note at the bottom of this file.
 
 ---
 
@@ -65,9 +71,12 @@ openssl x509 -in cert.pem -noout -fingerprint -sha1
 | `Team.ReadBasic.All` | List teams |
 | `Channel.ReadBasic.All` | List channels |
 | `ChannelMessage.Read.All` | Read Teams channel messages |
-| `ChannelMessage.Send` | Post to Teams channels |
 | `Mail.ReadWrite` | Read inbox, save drafts |
 | `Mail.Send` | Send and reply to emails |
+
+> **Note:** `ChannelMessage.Send` is not available as a standard application
+> permission — it requires Resource-Specific Consent (RSC). Teams channel
+> posting is handled via Power Automate Workflows instead (see below).
 
 3. Click **Grant admin consent for [your org]** — this is required; application permissions never work without it.
 
@@ -91,7 +100,25 @@ openssl x509 -in cert.pem -noout -fingerprint -sha1
 
 ---
 
-## 3 — Slash commands
+## 5 — Teams send via Power Automate Workflows
+
+Microsoft deprecated Incoming Webhooks. The replacement is a **Power Automate Workflow** with an HTTP trigger:
+
+1. In Teams, open the channel you want to post to
+2. Click **...** (More options) → **Workflows**
+3. Search for **"Post to a channel when a webhook request is received"**
+4. Follow the wizard — it creates a Flow with an HTTP POST trigger URL
+5. Copy the trigger URL
+
+Once this plugin has a `teams_workflow_url` config field, paste the URL there.
+The plugin will POST `{"text": "..."}` to that URL to send messages.
+
+> If you don't see the Workflows option, ask your Microsoft 365 admin to enable
+> Power Automate for your tenant.
+
+---
+
+## 3 — Slash commands (current)
 
 ```
 /m365-teams-list
@@ -101,10 +128,6 @@ openssl x509 -in cert.pem -noout -fingerprint -sha1
     Read the last N messages from a Teams channel.
     Defaults to watch_team_name / watch_channel_name if not given.
     Example: /m365-teams-read "Contoso IT" General 5
-
-/m365-teams-send <channel> <message>
-    Post a message to a channel in the default team.
-    Example: /m365-teams-send General Deployment complete ✅
 
 /m365-email-read [n]
     Show the last n emails from the inbox.
@@ -138,7 +161,7 @@ When your AstrBot model supports tool/function calls, you can use plain language
 
 ---
 
-## 5 — Background email notifications
+## 6 — Background email notifications
 
 Set `enable_background_poll = true` and `poll_interval_seconds` to receive automatic
 notifications of new unread emails in the active AstrBot session.
@@ -148,9 +171,9 @@ higher to avoid throttling.
 
 ---
 
-## 6 — Security notes
+## 7 — Security notes
 
-- The client secret grants **app-level access** to your tenant — treat it like a password.
+- The certificate private key grants **app-level access** to your tenant — treat it like a password and never commit it to source control.
 - `enable_email_send` is **off by default**. Only turn it on after verifying config.
 - This plugin uses **application permissions** (no user login required), which means the
   app can read/write on behalf of `user_email` without a logged-in session. Scope it
