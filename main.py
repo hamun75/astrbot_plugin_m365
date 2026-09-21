@@ -14,12 +14,8 @@ Slash commands:
   /m365-teams-send <ch> <msg>    — post a message to a channel
   /m365-email-read [n]           — read last N emails from inbox
   /m365-email-reply <id> <text>  — reply to an email by its short ID
-  /m365-email-draft <to> <subj> <body>  — save a draft
-  /m365-email-send  <to> <subj> <body>  — send an email
-
-LLM tools (natural-language triggers):
-  list_teams, read_teams_messages, send_teams_message,
-  read_emails, reply_to_email, draft_email, send_email
+  /m365-email-draft <to> <subj> | <body>  — save a draft
+  /m365-email-send  <to> <subj> | <body>  — send an email
 
 Setup — see README.md for the full Azure App Registration walkthrough.
 Required Microsoft Graph application permissions (admin consent needed):
@@ -36,7 +32,7 @@ from typing import Optional
 import aiohttp
 import msal
 
-from astrbot.api import logger, llm_tool
+from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.star import Context, Star, register
 
@@ -196,8 +192,8 @@ class M365Plugin(Star):
         self._ready = True
 
         # ---- team/channel ID cache (name → id) ----------------------------
-        self._team_cache: dict[str, str]          = {}   # team display_name → id
-        self._chan_cache: dict[str, dict[str, str]] = {}  # team_id → {chan_name → chan_id}
+        self._team_cache: dict = {}   # team display_name_lower → id
+        self._chan_cache: dict = {}   # team_id → {chan_name_lower → chan_id}
 
         # ---- background poll state ----------------------------------------
         self._last_email_id: Optional[str] = None
@@ -222,8 +218,8 @@ class M365Plugin(Star):
     # Internal: team/channel resolution
     # ------------------------------------------------------------------
 
-    async def _load_teams(self) -> dict[str, str]:
-        """Return {display_name: id} for all teams the app can see."""
+    async def _load_teams(self) -> dict:
+        """Return {display_name_lower: id} for all teams the app can see."""
         if self._team_cache:
             return self._team_cache
         data = await self._graph.get("/teams", params={"$select": "id,displayName", "$top": "50"})
@@ -231,7 +227,7 @@ class M365Plugin(Star):
             self._team_cache[t["displayName"].lower()] = t["id"]
         return self._team_cache
 
-    async def _resolve_team(self, name: str) -> tuple[str, str]:
+    async def _resolve_team(self, name: str):
         """Return (display_name_lower, team_id) or raise ValueError."""
         teams = await self._load_teams()
         key = name.strip().lower()
@@ -241,7 +237,7 @@ class M365Plugin(Star):
             )
         return key, teams[key]
 
-    async def _load_channels(self, team_id: str) -> dict[str, str]:
+    async def _load_channels(self, team_id: str) -> dict:
         """Return {channel_name_lower: channel_id} for a team."""
         if team_id in self._chan_cache:
             return self._chan_cache[team_id]
@@ -253,7 +249,7 @@ class M365Plugin(Star):
         self._chan_cache[team_id] = mapping
         return mapping
 
-    async def _resolve_channel(self, team_id: str, name: str) -> tuple[str, str]:
+    async def _resolve_channel(self, team_id: str, name: str):
         """Return (channel_name_lower, channel_id) or raise ValueError."""
         channels = await self._load_channels(team_id)
         key = name.strip().lower()
@@ -439,6 +435,11 @@ class M365Plugin(Star):
             logger.exception(f"[m365] {feature} error")
             yield event.plain_result(f"❌ {feature} failed: {e}")
 
+    def _update_poll_ctx(self, event: AstrMessageEvent):
+        """Store latest event context so background poller can send notifications."""
+        if self.bg_poll:
+            self._poll_ctx = event
+
     # ------------------------------------------------------------------
     # Slash commands
     # ------------------------------------------------------------------
@@ -446,6 +447,7 @@ class M365Plugin(Star):
     @filter.command("m365-teams-list")
     async def cmd_teams_list(self, event: AstrMessageEvent):
         """List all accessible Teams and their channels."""
+        self._update_poll_ctx(event)
         async for r in self._safe_run(event, self.teams_read, "teams_read",
                                        self._list_teams_text()):
             yield r
@@ -457,6 +459,7 @@ class M365Plugin(Star):
         Read the last N messages from a Teams channel.
         If team/channel are omitted, the plugin defaults are used.
         """
+        self._update_poll_ctx(event)
         err = self._check(self.teams_read, "teams_read")
         if err:
             yield event.plain_result(err)
@@ -482,9 +485,10 @@ class M365Plugin(Star):
     async def cmd_teams_send(self, event: AstrMessageEvent):
         """
         /m365-teams-send <channel> <message>
-        Send a message to the default team's channel (or prefix with team name).
+        Send a message to the default team's channel.
         Example: /m365-teams-send General Hello team!
         """
+        self._update_poll_ctx(event)
         err = self._check(self.teams_send, "teams_send")
         if err:
             yield event.plain_result(err)
@@ -517,6 +521,7 @@ class M365Plugin(Star):
         /m365-email-read [n]
         Show the last n emails from the configured inbox folder.
         """
+        self._update_poll_ctx(event)
         args  = (event.message_str or "").split()
         count = int(args[1]) if len(args) > 1 and args[1].isdigit() else self.email_max
 
@@ -530,6 +535,7 @@ class M365Plugin(Star):
         /m365-email-reply <id> <reply text>
         Reply to an email. <id> is the short 8-char ID shown by /m365-email-read.
         """
+        self._update_poll_ctx(event)
         err = self._check(self.email_send, "email_send")
         if err:
             yield event.plain_result(err)
@@ -551,6 +557,7 @@ class M365Plugin(Star):
         Save an email draft. Separate subject and body with a pipe ( | ).
         Example: /m365-email-draft alice@example.com Meeting notes | Hi Alice, ...
         """
+        self._update_poll_ctx(event)
         err = self._check(self.email_draft, "email_draft")
         if err:
             yield event.plain_result(err)
@@ -577,6 +584,7 @@ class M365Plugin(Star):
         Send an email immediately. enable_email_send must be ON in config.
         Example: /m365-email-send alice@example.com Hello | Hi Alice, just checking in.
         """
+        self._update_poll_ctx(event)
         err = self._check(self.email_send, "email_send")
         if err:
             yield event.plain_result(err)
@@ -595,159 +603,3 @@ class M365Plugin(Star):
         async for r in self._safe_run(event, self.email_send, "email_send",
                                        self._send_email(to, subj.strip(), body.strip())):
             yield r
-
-    # ------------------------------------------------------------------
-    # LLM tools (natural-language triggers)
-    # ------------------------------------------------------------------
-
-    @llm_tool(
-        name="list_teams",
-        desc="List all Microsoft Teams and their channels accessible to this plugin.",
-    )
-    async def tool_list_teams(self, event: AstrMessageEvent):
-        """List all teams and channels."""
-        async for r in self._safe_run(event, self.teams_read, "teams_read",
-                                       self._list_teams_text()):
-            yield r
-
-    @llm_tool(
-        name="read_teams_messages",
-        desc="Read recent messages from a Microsoft Teams channel.",
-    )
-    async def tool_read_teams(
-        self,
-        event: AstrMessageEvent,
-        team_name: str = "",
-        channel_name: str = "",
-        count: int = 10,
-    ):
-        """
-        Read Teams channel messages.
-        :param team_name: Display name of the Team (e.g. 'Melbit Internal')
-        :param channel_name: Display name of the channel (e.g. 'General')
-        :param count: How many messages to return (default 10)
-        """
-        t = team_name or self.dflt_team
-        c = channel_name or self.dflt_chan
-        if not t:
-            yield event.plain_result("Please specify a team name.")
-            return
-        async for r in self._safe_run(event, self.teams_read, "teams_read",
-                                       self._read_teams_messages(t, c, count)):
-            yield r
-
-    @llm_tool(
-        name="send_teams_message",
-        desc="Post a message to a Microsoft Teams channel.",
-    )
-    async def tool_send_teams(
-        self,
-        event: AstrMessageEvent,
-        channel_name: str = "",
-        message: str = "",
-        team_name: str = "",
-    ):
-        """
-        Send a message to a Teams channel.
-        :param channel_name: Target channel (e.g. 'General')
-        :param message: Message text to post
-        :param team_name: Team name — uses default if omitted
-        """
-        t = team_name or self.dflt_team
-        if not t:
-            yield event.plain_result("Please specify a team name or set watch_team_name in config.")
-            return
-        async for r in self._safe_run(event, self.teams_send, "teams_send",
-                                       self._send_teams_message(t, channel_name, message)):
-            yield r
-
-    @llm_tool(
-        name="read_emails",
-        desc="Read recent emails from the Microsoft 365 inbox.",
-    )
-    async def tool_read_emails(
-        self,
-        event: AstrMessageEvent,
-        count: int = 10,
-        folder: str = "",
-    ):
-        """
-        Read emails from inbox (or another folder).
-        :param count: Number of emails to return (default 10)
-        :param folder: Mail folder — defaults to the configured inbox_folder
-        """
-        f = folder or self.inbox_folder
-        async for r in self._safe_run(event, self.email_read, "email_read",
-                                       self._read_emails(count, f)):
-            yield r
-
-    @llm_tool(
-        name="reply_to_email",
-        desc="Reply to an email by its short ID (shown in /m365-email-read output).",
-    )
-    async def tool_reply_email(
-        self,
-        event: AstrMessageEvent,
-        email_id: str = "",
-        reply_text: str = "",
-    ):
-        """
-        Reply to an email.
-        :param email_id: Short 8-char email ID from email listing
-        :param reply_text: The reply body text
-        """
-        async for r in self._safe_run(event, self.email_send, "email_send",
-                                       self._reply_to_email(email_id, reply_text)):
-            yield r
-
-    @llm_tool(
-        name="draft_email",
-        desc="Save an email as a draft in Microsoft 365 (does not send).",
-    )
-    async def tool_draft_email(
-        self,
-        event: AstrMessageEvent,
-        to: str = "",
-        subject: str = "",
-        body: str = "",
-    ):
-        """
-        Create an email draft.
-        :param to: Recipient email address
-        :param subject: Email subject
-        :param body: Email body (plain text)
-        """
-        async for r in self._safe_run(event, self.email_draft, "email_draft",
-                                       self._draft_email(to, subject, body)):
-            yield r
-
-    @llm_tool(
-        name="send_email",
-        desc="Send an email via Microsoft 365. Only works when enable_email_send is ON in config.",
-    )
-    async def tool_send_email(
-        self,
-        event: AstrMessageEvent,
-        to: str = "",
-        subject: str = "",
-        body: str = "",
-    ):
-        """
-        Send an email.
-        :param to: Recipient email address
-        :param subject: Email subject
-        :param body: Email body (plain text)
-        """
-        async for r in self._safe_run(event, self.email_send, "email_send",
-                                       self._send_email(to, subject, body)):
-            yield r
-
-    # ------------------------------------------------------------------
-    # Hook background poll context onto first inbound message
-    # ------------------------------------------------------------------
-
-    @filter.on_decorating_result()
-    async def _capture_ctx(self, event: AstrMessageEvent):
-        """Store the latest event so the background poller can send to it."""
-        if self.bg_poll and self._poll_ctx is None:
-            self._poll_ctx = event
