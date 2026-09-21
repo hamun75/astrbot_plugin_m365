@@ -1,112 +1,157 @@
-# Melbits Astro Website Template
+# astrbot_plugin_m365
 
-A modern, production-ready Astro website for **melbits.com.au** — rebuilt with improved content, design system, and performance.
+Connects AstrBot to **Microsoft 365** via the [Microsoft Graph API](https://learn.microsoft.com/en-us/graph/overview).
 
-## Brand
+Features are toggled individually — turn on only what you need:
 
-- Primary Color: `#0AB0E8`
-- Fonts: **Sora** (headings/display) + **DM Sans** (body)
-- Dark background: `#0b1220`
+| Feature | Config toggle | Default |
+|---------|--------------|---------|
+| Read Teams channel messages | `enable_teams_read` | ✅ ON |
+| Send Teams channel messages | `enable_teams_send` | ✅ ON |
+| Read inbox emails | `enable_email_read` | ✅ ON |
+| Save email drafts | `enable_email_draft` | ✅ ON |
+| Send / reply to emails | `enable_email_send` | ❌ OFF |
+| Background new-email notifications | `enable_background_poll` | ❌ OFF |
 
-## Tech Stack
+---
 
-- [Astro 4](https://astro.build) — static site generator
-- Vanilla CSS with CSS custom properties (no external CSS framework)
-- Google Fonts (loaded via `@import`)
-- No JavaScript frameworks (plain JS for nav interactions)
+## 1 — Azure App Registration (one-time setup)
 
-## Project Structure
+### 1.1 Create the app
 
+1. Go to [portal.azure.com](https://portal.azure.com) → **Microsoft Entra ID** → **App registrations** → **New registration**
+2. Name it something like `AstrBot M365 Bridge`
+3. **Supported account types:** *Accounts in this organisational directory only*
+4. No redirect URI needed — this plugin uses client credentials, not user login
+5. Click **Register**
+
+### 1.2 Note your IDs
+
+On the app's **Overview** page, copy:
+- **Application (client) ID** → `client_id` in plugin config
+- **Directory (tenant) ID** → `tenant_id` in plugin config
+
+### 1.3 Upload your certificate
+
+This plugin uses certificate authentication (client secrets are not required).
+
+1. **Certificates & secrets** → **Certificates** tab → **Upload certificate**
+2. Upload your `.cer` or `.pem` public key file
+3. Note the **Thumbprint** shown after upload — you'll need it in the plugin config
+
+To generate a self-signed certificate if you don't have one (PowerShell):
+```powershell
+$cert = New-SelfSignedCertificate -Subject "CN=AstrBot M365 Plugin" `
+    -CertStoreLocation "Cert:\CurrentUser\My" `
+    -KeyExportPolicy Exportable -KeySpec Signature `
+    -NotAfter (Get-Date).AddYears(2)
+Export-Certificate -Cert $cert -FilePath "$env:DESKTOP\astrbot_m365.cer"
+Export-PfxCertificate -Cert $cert -FilePath "$env:DESKTOP\astrbot_m365.pfx" `
+    -Password (ConvertTo-SecureString "your-passphrase" -Force -AsPlainText)
 ```
-src/
-  layouts/
-    BaseLayout.astro       # HTML shell, imports Nav + Footer
-  pages/
-    index.astro            # Homepage
-    contact.astro          # Contact page with form
-    services/
-      managed-it.astro     # Managed IT Services page (template for others)
-  components/
-    Nav.astro              # Sticky nav with dropdowns + mobile menu
-    Hero.astro             # Homepage hero with animated cards
-    WhyUs.astro            # 6-card "Why choose us" section
-    Services.astro         # Services grid
-    Industries.astro       # Dark-themed industries section
-    Testimonials.astro     # Client testimonials grid
-    CTA.astro              # Full-width CTA banner
-    Footer.astro           # Footer with partners bar
-  styles/
-    global.css             # Design tokens, utility classes, typography
-```
 
-## Getting Started
-
+To get the thumbprint of an existing PEM file:
 ```bash
-# Install dependencies
-npm install
-
-# Start dev server
-npm run dev
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
+openssl x509 -in cert.pem -noout -fingerprint -sha1
 ```
 
-## Pages to Create
+### 1.4 Grant API permissions
 
-Based on current site structure, these pages still need to be built using the template pattern in `services/managed-it.astro`:
+1. **API permissions** → **Add a permission** → **Microsoft Graph** → **Application permissions**
+2. Add all of the following:
 
-**Services**
-- `/services/cloud` — Cloud Services & Azure
-- `/services/microsoft-365` — Microsoft 365
-- `/services/consulting` — IT Consulting
-- `/services/remote-support` — Remote IT Support
-- `/services/voip` — VoIP & 3CX
+| Permission | Purpose |
+|-----------|---------|
+| `Team.ReadBasic.All` | List teams |
+| `Channel.ReadBasic.All` | List channels |
+| `ChannelMessage.Read.All` | Read Teams channel messages |
+| `ChannelMessage.Send` | Post to Teams channels |
+| `Mail.ReadWrite` | Read inbox, save drafts |
+| `Mail.Send` | Send and reply to emails |
 
-**Cybersecurity**
-- `/cybersecurity` — Overview
-- `/cybersecurity/essential-eight`
-- `/cybersecurity/assessment`
-- `/cybersecurity/saas-security`
-- `/cybersecurity/playbooks`
+3. Click **Grant admin consent for [your org]** — this is required; application permissions never work without it.
 
-**Industries**
-- `/industries/accounting`
-- `/industries/law`
-- `/industries/medical`
-- `/industries/real-estate`
-- `/industries/pharmacy`
-- `/industries/conveyancing`
+---
 
-**Company**
-- `/about`
-- `/blog`
-- `/case-studies`
-- `/faq`
+## 2 — Plugin config
 
-## Design System
+| Field | Description |
+|-------|-------------|
+| `tenant_id` | Azure Directory (tenant) ID |
+| `client_id` | App Registration application ID |
+| `cert_thumbprint` | SHA-1 thumbprint of the uploaded certificate (40 hex chars, no colons) |
+| `cert_private_key` | Full PEM content of the private key (paste including `-----BEGIN...` lines) |
+| `user_email` | The M365 user whose mailbox and Teams the plugin acts on (e.g. `user@yourcompany.com`) |
+| `watch_team_name` | Default Teams team name (used when no team is given in a command) |
+| `watch_channel_name` | Default channel name (default: `General`) |
+| `email_inbox_folder` | Folder for /m365-email-read (default: `inbox`) |
+| `email_max_results` | Max emails per read (default: 10) |
+| `teams_max_results` | Max Teams messages per read (default: 10) |
+| `poll_interval_seconds` | Background poll interval in seconds (default: 120) |
 
-All design tokens are in `src/styles/global.css` under `:root`. Key variables:
+---
 
-| Variable | Value | Use |
-|---|---|---|
-| `--brand` | `#0AB0E8` | Primary accent |
-| `--brand-dark` | `#0890c0` | Hover states |
-| `--brand-light` | `#e8f8fd` | Light backgrounds |
-| `--dark` | `#0b1220` | Dark sections |
-| `--radius-lg` | `22px` | Card border radius |
+## 3 — Slash commands
 
-## Deploying
+```
+/m365-teams-list
+    List all accessible Teams and their channels.
 
-Astro builds to static HTML/CSS/JS by default — deploy to:
-- **Netlify**: `npm run build` → publish `dist/` directory
-- **Vercel**: connect repo, auto-detects Astro
-- **Cloudflare Pages**: connect repo, build command `npm run build`, output `dist`
+/m365-teams-read [team] [channel] [count]
+    Read the last N messages from a Teams channel.
+    Defaults to watch_team_name / watch_channel_name if not given.
+    Example: /m365-teams-read "Contoso IT" General 5
 
-For dynamic features (contact form), integrate with:
-- Netlify Forms (add `netlify` attribute to `<form>`)
-- Formspree
-- Or a serverless function endpoint
+/m365-teams-send <channel> <message>
+    Post a message to a channel in the default team.
+    Example: /m365-teams-send General Deployment complete ✅
+
+/m365-email-read [n]
+    Show the last n emails from the inbox.
+    Example: /m365-email-read 5
+
+/m365-email-reply <id> <reply text>
+    Reply to an email. <id> is the 8-char short ID from /m365-email-read.
+    Requires enable_email_send = true.
+    Example: /m365-email-reply a3f2b901 Thanks, will follow up tomorrow.
+
+/m365-email-draft <to> <subject> | <body>
+    Save a draft email (does not send).
+    Example: /m365-email-draft alice@example.com Meeting recap | Hi Alice, here are the notes...
+
+/m365-email-send <to> <subject> | <body>
+    Send an email immediately.
+    Requires enable_email_send = true.
+    Example: /m365-email-send bob@example.com Quick update | Hi Bob, all done on my end.
+```
+
+---
+
+## 4 — Natural language (LLM tools)
+
+When your AstrBot model supports tool/function calls, you can use plain language:
+
+> *"Show me the last 5 messages in the General channel"*
+> *"Post a message to Teams saying the build is done"*
+> *"What emails have I got today?"*
+> *"Draft a reply to email a3f2b901 saying I'll call tomorrow"*
+
+---
+
+## 5 — Background email notifications
+
+Set `enable_background_poll = true` and `poll_interval_seconds` to receive automatic
+notifications of new unread emails in the active AstrBot session.
+
+**Note:** Microsoft Graph API has rate limits. Keep `poll_interval_seconds` at 60 or
+higher to avoid throttling.
+
+---
+
+## 6 — Security notes
+
+- The client secret grants **app-level access** to your tenant — treat it like a password.
+- `enable_email_send` is **off by default**. Only turn it on after verifying config.
+- This plugin uses **application permissions** (no user login required), which means the
+  app can read/write on behalf of `user_email` without a logged-in session. Scope it
+  carefully — revoke the app registration if it is no longer needed.
