@@ -175,10 +175,11 @@ class M365Plugin(Star):
         self.email_max   = int(self.cfg.get("email_max_results",  10) or 10)
         self.teams_max   = int(self.cfg.get("teams_max_results",  10) or 10)
         self.poll_secs   = int(self.cfg.get("poll_interval_seconds", 120) or 120)
-        self.user_email  = str(self.cfg.get("user_email", "") or "").strip()
-        self.dflt_team   = str(self.cfg.get("watch_team_name",   "") or "").strip()
-        self.dflt_chan   = str(self.cfg.get("watch_channel_name", "General") or "General").strip()
-        self.inbox_folder = str(self.cfg.get("email_inbox_folder", "inbox") or "inbox").strip()
+        self.user_email        = str(self.cfg.get("user_email", "") or "").strip()
+        self.dflt_team         = str(self.cfg.get("watch_team_name",   "") or "").strip()
+        self.dflt_chan          = str(self.cfg.get("watch_channel_name", "General") or "General").strip()
+        self.inbox_folder      = str(self.cfg.get("email_inbox_folder", "inbox") or "inbox").strip()
+        self.teams_webhook_url = str(self.cfg.get("teams_webhook_url", "") or "").strip()
 
         # ---- auth ---------------------------------------------------------
         tenant    = str(self.cfg.get("tenant_id",        "") or "").strip()
@@ -286,14 +287,20 @@ class M365Plugin(Star):
             lines.append(f"[{ts}] **{sender}** (id: {mid})\n{body}\n")
         return "\n".join(lines)
 
-    async def _send_teams_message(self, team_name: str, chan_name: str, text: str) -> str:
-        _, team_id = await self._resolve_team(team_name)
-        _, chan_id  = await self._resolve_channel(team_id, chan_name)
-        await self._graph.post(
-            f"/teams/{team_id}/channels/{chan_id}/messages",
-            {"body": {"contentType": "text", "content": text}},
-        )
-        return f"✅ Message sent to {team_name.title()} › {chan_name.title()}."
+    async def _send_teams_message(self, text: str) -> str:
+        """Post a message via the configured incoming webhook URL."""
+        if not self.teams_webhook_url:
+            return "⚠️ teams_webhook_url is not configured. Add an Incoming Webhook connector to your Teams channel and paste the URL in plugin config."
+        await self._graph._ensure_session()
+        async with self._graph._session.post(
+            self.teams_webhook_url,
+            json={"text": text},
+            headers={"Content-Type": "application/json"},
+        ) as resp:
+            if not resp.ok:
+                body = await resp.text()
+                raise RuntimeError(f"Webhook POST failed {resp.status}: {body}")
+        return "✅ Message sent to Teams."
 
     async def _list_teams_text(self) -> str:
         teams = await self._load_teams()
@@ -488,9 +495,9 @@ class M365Plugin(Star):
     @filter.command("m365-teams-send")
     async def cmd_teams_send(self, event: AstrMessageEvent):
         """
-        /m365-teams-send <channel> <message>
-        Send a message to the default team's channel.
-        Example: /m365-teams-send General Hello team!
+        /m365-teams-send <message>
+        Post a message to the Teams channel configured via incoming webhook.
+        Example: /m365-teams-send Deployment complete ✅
         """
         self._update_poll_ctx(event)
         err = self._check(self.teams_send, "teams_send")
@@ -498,25 +505,13 @@ class M365Plugin(Star):
             yield event.plain_result(err)
             return
 
-        raw = (event.message_str or "").split(maxsplit=2)
-        if len(raw) < 3:
-            yield event.plain_result(
-                "Usage: /m365-teams-send <channel> <message>\n"
-                "The default team from watch_team_name is used unless you specify one."
-            )
-            return
-
-        chan = raw[1]
-        text = raw[2]
-        team = self.dflt_team
-        if not team:
-            yield event.plain_result(
-                "⚠️ watch_team_name is not set in config — cannot determine which team to post to."
-            )
+        raw = (event.message_str or "").split(maxsplit=1)
+        if len(raw) < 2:
+            yield event.plain_result("Usage: /m365-teams-send <message>")
             return
 
         async for r in self._safe_run(event, self.teams_send, "teams_send",
-                                       self._send_teams_message(team, chan, text)):
+                                       self._send_teams_message(raw[1])):
             yield r
 
     @filter.command("m365-email-read")

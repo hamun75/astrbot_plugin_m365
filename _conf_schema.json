@@ -38,8 +38,14 @@
   "enable_teams_send": {
     "description": "Enable: send Teams channel messages",
     "type": "bool",
-    "hint": "When ON, /m365-teams-send and the send_teams_message LLM tool are active. Requires ChannelMessage.Send app permission with admin consent.",
+    "hint": "When ON, /m365-teams-send posts a message via the incoming webhook URL configured in teams_webhook_url.",
     "default": true
+  },
+  "teams_webhook_url": {
+    "description": "Teams incoming webhook URL",
+    "type": "string",
+    "hint": "The incoming webhook URL for the Teams channel to post to. In Teams: open the channel → three dots → Connectors → Incoming Webhook → Configure → copy the URL. Paste it here. No Azure permissions needed.",
+    "default": ""
   },
   "enable_email_read": {
     "description": "Enable: read inbox emails",
