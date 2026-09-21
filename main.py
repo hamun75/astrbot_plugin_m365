@@ -56,11 +56,14 @@ class GraphClient:
     All HTTP calls are async (aiohttp).
     """
 
-    def __init__(self, tenant_id: str, client_id: str, client_secret: str):
+    def __init__(self, tenant_id: str, client_id: str, cert_thumbprint: str, cert_private_key: str):
         self._app = msal.ConfidentialClientApplication(
             client_id,
             authority=f"https://login.microsoftonline.com/{tenant_id}",
-            client_credential=client_secret,
+            client_credential={
+                "thumbprint": cert_thumbprint,
+                "private_key": cert_private_key,
+            },
         )
         self._token: Optional[str] = None
         self._token_expiry: float = 0.0
@@ -178,17 +181,18 @@ class M365Plugin(Star):
         self.inbox_folder = str(self.cfg.get("email_inbox_folder", "inbox") or "inbox").strip()
 
         # ---- auth ---------------------------------------------------------
-        tenant = str(self.cfg.get("tenant_id",     "") or "").strip()
-        c_id   = str(self.cfg.get("client_id",     "") or "").strip()
-        c_sec  = str(self.cfg.get("client_secret", "") or "").strip()
+        tenant    = str(self.cfg.get("tenant_id",        "") or "").strip()
+        c_id      = str(self.cfg.get("client_id",        "") or "").strip()
+        cert_tp   = str(self.cfg.get("cert_thumbprint",  "") or "").replace(":", "").strip()
+        cert_key  = str(self.cfg.get("cert_private_key", "") or "").strip()
 
-        if not all([tenant, c_id, c_sec]):
-            logger.warning("[m365] tenant_id / client_id / client_secret not fully set — plugin disabled.")
+        if not all([tenant, c_id, cert_tp, cert_key]):
+            logger.warning("[m365] tenant_id / client_id / cert_thumbprint / cert_private_key not fully set — plugin disabled.")
             self._ready = False
             self._graph: Optional[GraphClient] = None
             return
 
-        self._graph = GraphClient(tenant, c_id, c_sec)
+        self._graph = GraphClient(tenant, c_id, cert_tp, cert_key)
         self._ready = True
 
         # ---- team/channel ID cache (name → id) ----------------------------

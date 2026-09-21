@@ -11,16 +11,22 @@
     "hint": "The Application (client) ID of your Azure App Registration. Create one at portal.azure.com → Entra ID → App registrations → New registration. Grant it the API permissions listed in the README, then create a client secret.",
     "default": ""
   },
-  "client_secret": {
-    "description": "App Registration Client Secret",
+  "cert_thumbprint": {
+    "description": "Certificate thumbprint (SHA-1, no colons)",
     "type": "string",
-    "hint": "A client secret from your App Registration (Certificates & secrets → New client secret). Copy the Value immediately — it's only shown once. Store it here; it authenticates the plugin to the Microsoft Graph API.",
+    "hint": "The SHA-1 thumbprint of the certificate uploaded to your App Registration under Certificates & secrets → Certificates. Strip the colons — 40 hex characters, e.g. E451C51BEAD2B2053D5D7CCC606FDA1CB1C2180C. Get it with: openssl x509 -in cert.pem -noout -fingerprint -sha1",
+    "default": ""
+  },
+  "cert_private_key": {
+    "description": "Certificate private key (PEM content)",
+    "type": "string",
+    "hint": "Paste the full contents of your private key PEM file here, including the -----BEGIN ... ----- and -----END ... ----- lines. This is the private key that matches the certificate uploaded to Azure. Keep this secret — it authenticates the plugin in place of a client secret.",
     "default": ""
   },
   "user_email": {
     "description": "Microsoft 365 user email (UPN)",
     "type": "string",
-    "hint": "The email address of the user whose mailbox and Teams activity this plugin will act on — e.g. hamun@melbits.com.au. The app must have been granted permissions (with admin consent) to act on that user's behalf.",
+    "hint": "The email address of the user whose mailbox and Teams activity this plugin will act on — e.g. user@yourcompany.com. The app must have been granted permissions (with admin consent) to act on that user's behalf.",
     "default": ""
   },
   "enable_teams_read": {
@@ -80,7 +86,7 @@
   "watch_team_name": {
     "description": "Default Teams team name to monitor",
     "type": "string",
-    "hint": "The display name of the Microsoft Team to use when no team is specified in a command — e.g. 'Melbit Internal'. Leave blank to require an explicit team name each time.",
+    "hint": "The display name of the Microsoft Team to use when no team is specified in a command — e.g. 'Contoso IT'. Leave blank to require an explicit team name each time.",
     "default": ""
   },
   "watch_channel_name": {
