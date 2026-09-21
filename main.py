@@ -604,7 +604,7 @@ class M365Plugin(Star):
         name="list_teams",
         desc="List all Microsoft Teams and their channels accessible to this plugin.",
     )
-    async def tool_list_teams(self, event: AstrMessageEvent, **_):
+    async def tool_list_teams(self, event: AstrMessageEvent):
         """List all teams and channels."""
         async for r in self._safe_run(event, self.teams_read, "teams_read",
                                        self._list_teams_text()):
@@ -617,8 +617,8 @@ class M365Plugin(Star):
     async def tool_read_teams(
         self,
         event: AstrMessageEvent,
-        team_name: str,
-        channel_name: str,
+        team_name: str = "",
+        channel_name: str = "",
         count: int = 10,
     ):
         """
@@ -643,8 +643,8 @@ class M365Plugin(Star):
     async def tool_send_teams(
         self,
         event: AstrMessageEvent,
-        channel_name: str,
-        message: str,
+        channel_name: str = "",
+        message: str = "",
         team_name: str = "",
     ):
         """
@@ -688,8 +688,8 @@ class M365Plugin(Star):
     async def tool_reply_email(
         self,
         event: AstrMessageEvent,
-        email_id: str,
-        reply_text: str,
+        email_id: str = "",
+        reply_text: str = "",
     ):
         """
         Reply to an email.
@@ -707,9 +707,9 @@ class M365Plugin(Star):
     async def tool_draft_email(
         self,
         event: AstrMessageEvent,
-        to: str,
-        subject: str,
-        body: str,
+        to: str = "",
+        subject: str = "",
+        body: str = "",
     ):
         """
         Create an email draft.
@@ -728,9 +728,9 @@ class M365Plugin(Star):
     async def tool_send_email(
         self,
         event: AstrMessageEvent,
-        to: str,
-        subject: str,
-        body: str,
+        to: str = "",
+        subject: str = "",
+        body: str = "",
     ):
         """
         Send an email.
